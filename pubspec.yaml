@@ -19,9 +19,14 @@ dependencies:
   get_it: ^9.2.1
   injectable: ^3.0.0
 
+  # Firebase
+  firebase_core: ^4.11.0
+  firebase_auth: ^6.5.4
+  cloud_firestore: ^6.6.0
+
   # Networking
-  dio: ^5.9.2
-  pretty_dio_logger: ^1.4.0
+  # dio: ^5.9.2
+  # pretty_dio_logger: ^1.4.0
   connectivity_plus: ^7.1.1
 
   # Functional / error handling
@@ -32,16 +37,20 @@ dependencies:
 
   # Local storage
   # hive: ^2.2.3
-  hive_ce: ^2.19.2
-  hive_ce_flutter: ^2.3.4
+  # hive_ce: ^2.19.2
+  # hive_ce_flutter: ^2.3.4
   # hive_flutter: ^1.1.0
+  # flutter_secure_storage: ^10.3.1
+  # shared_preferences: ^2.5.5
+
+  # Local storage (token cache fallback — Firebase Auth handles tokens
+  # natively, but we keep this for the cached UserModel offline fallback)
   flutter_secure_storage: ^10.3.1
-  shared_preferences: ^2.5.5
 
   # Utils
   intl: ^0.20.2
   formz: ^0.8.0
-  json_annotation: ^4.12.0
+  # json_annotation: ^4.12.0
 
   cupertino_icons: ^1.0.9
 
@@ -50,11 +59,11 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
 
-  build_runner: ^2.15.0
-  injectable_generator: 3.0.2
-  json_serializable: ^6.14.0
+  # build_runner: ^2.15.0
+  # injectable_generator: 3.0.2
+  # json_serializable: ^6.14.0
   # hive_generator: ^2.0.1
-  hive_ce_generator: ^1.11.2
+  # hive_ce_generator: ^1.11.2
 
   bloc_test: ^10.0.0
   mocktail: ^1.0.5

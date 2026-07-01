@@ -1,8 +1,8 @@
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
 
-import '../network/dio_client.dart';
 import '../network/network_info.dart';
 
 import '../../features/auth/data/datasources/auth_local_datasource.dart';
@@ -50,24 +50,30 @@ import '../../features/employee_management/domain/usecases/reassign_role_or_mana
 import '../../features/employee_management/domain/usecases/update_employee_usecase.dart';
 import '../../features/employee_management/presentation/bloc/employee_bloc.dart';
 
-/// Manual service-locator setup with get_it.
-/// (You can switch to @injectable codegen later; this manual version
-/// is explicit and easy to read while the app is young.)
+// Connectivity is still used for the network guard in repositories.
+import 'package:connectivity_plus/connectivity_plus.dart';
+
 final sl = GetIt.instance;
 
 Future<void> initDependencies() async {
-  // ---------------- Core ----------------
+  // ── Core ──────────────────────────────────────────────────────────────────
+
+  // Firebase singletons (already initialized in main.dart via Firebase.initializeApp)
+  sl.registerLazySingleton<FirebaseAuth>(() => FirebaseAuth.instance);
+  sl.registerLazySingleton<FirebaseFirestore>(() => FirebaseFirestore.instance);
+
   sl.registerLazySingleton<FlutterSecureStorage>(() => const FlutterSecureStorage());
   sl.registerLazySingleton<Connectivity>(() => Connectivity());
   sl.registerLazySingleton<NetworkInfo>(() => NetworkInfoImpl(sl()));
-  sl.registerLazySingleton(() => DioClient.create(sl()));
 
-  // ---------------- Feature: Auth ----------------
-  // Data sources
-  sl.registerLazySingleton<AuthRemoteDataSource>(() => AuthRemoteDataSourceImpl(sl()));
-  sl.registerLazySingleton<AuthLocalDataSource>(() => AuthLocalDataSourceImpl(sl()));
+  // ── Feature: Auth ─────────────────────────────────────────────────────────
 
-  // Repository
+  sl.registerLazySingleton<AuthRemoteDataSource>(
+    () => AuthRemoteDataSourceImpl(auth: sl(), firestore: sl()),
+  );
+  sl.registerLazySingleton<AuthLocalDataSource>(
+    () => AuthLocalDataSourceImpl(sl()),
+  );
   sl.registerLazySingleton<AuthRepository>(
     () => AuthRepositoryImpl(
       remoteDataSource: sl(),
@@ -76,13 +82,10 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Use cases
   sl.registerLazySingleton(() => LoginUseCase(sl()));
   sl.registerLazySingleton(() => LogoutUseCase(sl()));
   sl.registerLazySingleton(() => GetCurrentUserUseCase(sl()));
 
-  // Bloc - registered as factory so a fresh instance is created if ever needed,
-  // but in main.dart we provide ONE instance app-wide via BlocProvider.
   sl.registerFactory(
     () => AuthBloc(
       loginUseCase: sl(),
@@ -91,14 +94,11 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // ---------------- Feature: Attendance ----------------
-  // TODO: register AttendanceRemoteDataSource, AttendanceRepository,
-  // ClockInUseCase, ClockOutUseCase, GetTeamAttendanceUseCase, AttendanceBloc
-  // following the exact same pattern as Auth above.
+  // ── Feature: Attendance ───────────────────────────────────────────────────
 
-  // ---------------- Feature: Attendance ----------------
-  sl.registerLazySingleton<AttendanceRemoteDataSource>(() => AttendanceRemoteDataSourceImpl(sl()));
-
+  sl.registerLazySingleton<AttendanceRemoteDataSource>(
+    () => AttendanceRemoteDataSourceImpl(firestore: sl(), auth: sl()),
+  );
   sl.registerLazySingleton<AttendanceRepository>(
     () => AttendanceRepositoryImpl(remoteDataSource: sl(), networkInfo: sl()),
   );
@@ -119,9 +119,11 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // ---------------- Feature: Time off ----------------
-  sl.registerLazySingleton<TimeOffRemoteDataSource>(() => TimeOffRemoteDataSourceImpl(sl()));
+  // ── Feature: Time Off ─────────────────────────────────────────────────────
 
+  sl.registerLazySingleton<TimeOffRemoteDataSource>(
+    () => TimeOffRemoteDataSourceImpl(firestore: sl(), auth: sl()),
+  );
   sl.registerLazySingleton<TimeOffRepository>(
     () => TimeOffRepositoryImpl(remoteDataSource: sl(), networkInfo: sl()),
   );
@@ -150,9 +152,11 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // ---------------- Feature: Employee management ----------------
-  sl.registerLazySingleton<EmployeeRemoteDataSource>(() => EmployeeRemoteDataSourceImpl(sl()));
+  // ── Feature: Employee Management ──────────────────────────────────────────
 
+  sl.registerLazySingleton<EmployeeRemoteDataSource>(
+    () => EmployeeRemoteDataSourceImpl(firestore: sl(), auth: sl()),
+  );
   sl.registerLazySingleton<EmployeeRepository>(
     () => EmployeeRepositoryImpl(remoteDataSource: sl(), networkInfo: sl()),
   );

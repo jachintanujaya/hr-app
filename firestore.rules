@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isEmployee() { return isSignedIn(); }
+    function isAdmin()    { return isSignedIn() && (userRole() == 'admin'      || userRole() == 'superAdmin'); }
+    function isSuperAdmin(){ return isSignedIn() && userRole() == 'superAdmin'; }
+
+    function isOwner(uid) { return request.auth.uid == uid; }
+
+    function managerId(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.manager_id;
+    }
+
+    // ── users collection ─────────────────────────────────────────────────────
+    match /users/{uid} {
+      // Everyone can read their own profile.
+      allow read: if isSignedIn() && (isOwner(uid) || isAdmin());
+
+      // Super Admin can create & delete. Admin can update limited fields.
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin()
+        || (isAdmin() && isOwner(uid) == false
+            // Admin may only touch job_title, department, status
+            && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['job_title', 'department', 'status']));
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── attendance collection ─────────────────────────────────────────────────
+    match /attendance/{docId} {
+      // Employee reads own records; admin reads team records.
+      allow read: if isSignedIn()
+        && (isOwner(resource.data.employee_id)
+            || (isAdmin() && resource.data.manager_id == request.auth.uid));
+
+      // Any signed-in user can create their own record.
+      allow create: if isSignedIn()
+        && request.resource.data.employee_id == request.auth.uid;
+
+      // Employee can update their own (clock-in/out). Admin can update team.
+      allow update: if isSignedIn()
+        && (isOwner(resource.data.employee_id)
+            || (isAdmin() && resource.data.manager_id == request.auth.uid));
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── time_off_requests collection ─────────────────────────────────────────
+    match /time_off_requests/{docId} {
+      allow read: if isSignedIn()
+        && (isOwner(resource.data.employee_id)
+            || (isAdmin() && resource.data.manager_id == request.auth.uid));
+
+      // Employee creates their own request.
+      allow create: if isSignedIn()
+        && request.resource.data.employee_id == request.auth.uid;
+
+      // Employee cancels own pending request; admin approves/rejects.
+      allow update: if isSignedIn()
+        && (
+          // Owner cancelling their own request
+          (isOwner(resource.data.employee_id)
+           && request.resource.data.status == 'cancelled'
+           && resource.data.status == 'pending')
+          ||
+          // Admin / Super Admin approving or rejecting
+          (isAdmin() && resource.data.manager_id == request.auth.uid
+           && request.resource.data.status in ['approved', 'rejected'])
+        );
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── time_off_balances collection ─────────────────────────────────────────
+    match /time_off_balances/{docId} {
+      allow read: if isSignedIn()
+        && (isOwner(resource.data.employee_id) || isAdmin());
+      // Balances are managed server-side (Cloud Functions) or by Super Admin.
+      allow write: if isSuperAdmin();
+    }
+
+    // ── time_off_policies collection ─────────────────────────────────────────
+    match /time_off_policies/{docId} {
+      allow read: if isSignedIn();  // all roles can read policies
+      allow write: if isSuperAdmin();
+    }
+  }
+}

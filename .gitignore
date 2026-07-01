@@ -1,3 +1,4 @@
+# Flutter
 .dart_tool/
 .packages
 build/
@@ -6,3 +7,13 @@ build/
 .flutter-plugins-dependencies
 ios/
 android/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+
+# Firebase sensitive config
+lib/firebase_options.dart
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist

@@ -4,11 +4,16 @@ import '../../../../core/error/exceptions.dart';
 import '../../../../core/utils/constants.dart';
 import '../models/user_model.dart';
 
+/// Firebase Auth manages access/refresh tokens natively, so this class is
+/// now only responsible for caching the user profile for offline reads.
+/// The saveTokens / getAccessToken / clearTokens methods are kept as no-ops
+/// so nothing else in the codebase needs to change.
 abstract class AuthLocalDataSource {
   Future<void> cacheUser(UserModel user);
   Future<UserModel> getCachedUser();
   Future<void> clearCache();
 
+  // No-ops — Firebase Auth owns token lifecycle.
   Future<void> saveTokens({required String accessToken, required String refreshToken});
   Future<String?> getAccessToken();
   Future<String?> getRefreshToken();
@@ -22,15 +27,16 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
   @override
   Future<void> cacheUser(UserModel user) async {
-    await secureStorage.write(key: StorageKeys.cachedUser, value: jsonEncode(user.toJson()));
+    await secureStorage.write(
+      key: StorageKeys.cachedUser,
+      value: jsonEncode(user.toJson()),
+    );
   }
 
   @override
   Future<UserModel> getCachedUser() async {
     final jsonStr = await secureStorage.read(key: StorageKeys.cachedUser);
-    if (jsonStr == null) {
-      throw CacheException('No cached user found');
-    }
+    if (jsonStr == null) throw CacheException('No cached user found');
     return UserModel.fromJson(jsonDecode(jsonStr) as Map<String, dynamic>);
   }
 
@@ -39,21 +45,17 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     await secureStorage.delete(key: StorageKeys.cachedUser);
   }
 
-  @override
-  Future<void> saveTokens({required String accessToken, required String refreshToken}) async {
-    await secureStorage.write(key: StorageKeys.accessToken, value: accessToken);
-    await secureStorage.write(key: StorageKeys.refreshToken, value: refreshToken);
-  }
+  // ── token stubs (Firebase handles these) ─────────────────────────────────
 
   @override
-  Future<String?> getAccessToken() => secureStorage.read(key: StorageKeys.accessToken);
+  Future<void> saveTokens({required String accessToken, required String refreshToken}) async {}
 
   @override
-  Future<String?> getRefreshToken() => secureStorage.read(key: StorageKeys.refreshToken);
+  Future<String?> getAccessToken() async => null;
 
   @override
-  Future<void> clearTokens() async {
-    await secureStorage.delete(key: StorageKeys.accessToken);
-    await secureStorage.delete(key: StorageKeys.refreshToken);
-  }
+  Future<String?> getRefreshToken() async => null;
+
+  @override
+  Future<void> clearTokens() async {}
 }
