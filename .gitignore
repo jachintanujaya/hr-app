@@ -23,6 +23,7 @@ android/local.properties
 android/key.properties
 android/app/*.jks
 android/app/*.keystore
+android/app/google-services.json
 
 # NOTE: android/app/google-services.json IS tracked on purpose (private repo,
 # client config, simplifies teammate onboarding — per your setup).
