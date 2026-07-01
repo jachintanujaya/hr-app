@@ -1,19 +1,57 @@
-# Flutter
+# Dart / Flutter
 .dart_tool/
 .packages
 build/
-*.lock
 .flutter-plugins
 .flutter-plugins-dependencies
-ios/
-android/
 
-# Firebase
+# NOTE: pubspec.lock is intentionally NOT ignored — this is an app, not a
+# package, so we commit it to keep dependency versions identical across
+# the team and CI.
+
+# IDE (IntelliJ / Android Studio)
+.idea/
+*.iml
+
+# VS Code (optional — uncomment if you don't want to share editor settings)
+# .vscode/
+
+# Android
+android/**/build/
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
+
+# NOTE: android/app/google-services.json IS tracked on purpose (private repo,
+# client config, simplifies teammate onboarding — per your setup).
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/flutter_export_environment.sh
+ios/Runner/GeneratedPluginRegistrant.*
+ios/build/
+
+# NOTE: ios/Runner/GoogleService-Info.plist IS tracked on purpose, same
+# reasoning as google-services.json above, if/when you add iOS.
+
+# macOS/Linux/Windows desktop build outputs (if enabled later)
+macos/Flutter/ephemeral/
+linux/flutter/ephemeral/
+windows/flutter/ephemeral/
+
+# Firebase CLI local cache
 .firebase/
-firebase-debug.log
-firestore-debug.log
 
-# Firebase sensitive config
-lib/firebase_options.dart
-android/app/google-services.json
-ios/Runner/GoogleService-Info.plist
+# Secrets — NEVER commit these regardless of repo visibility
+**/serviceAccountKey.json
+**/*-firebase-adminsdk-*.json
+.env
+.env.*
+
+# Coverage / test output
+coverage/
