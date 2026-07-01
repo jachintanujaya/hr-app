@@ -4,7 +4,6 @@
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
-lib/firebase_options.dart
 
 # NOTE: pubspec.lock is intentionally NOT ignored — this is an app, not a
 # package, so we commit it to keep dependency versions identical across
@@ -47,6 +46,7 @@ windows/flutter/ephemeral/
 
 # Firebase CLI local cache
 .firebase/
+lib/firebase_options.dart
 
 # Secrets — NEVER commit these regardless of repo visibility
 **/serviceAccountKey.json
