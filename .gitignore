@@ -4,6 +4,7 @@
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
+lib/firebase-options.dart
 
 # NOTE: pubspec.lock is intentionally NOT ignored — this is an app, not a
 # package, so we commit it to keep dependency versions identical across
