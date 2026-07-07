@@ -1,25 +1,33 @@
+import 'dart:async';
 import 'package:bloc/bloc.dart';
+import 'package:bloc_concurrency/bloc_concurrency.dart';
+import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/usecases/usecase.dart';
 import '../../domain/entities/attendance_entity.dart';
+import '../../domain/entities/working_hours_settings_entity.dart';
 import '../../domain/usecases/clock_in_usecase.dart';
 import '../../domain/usecases/clock_out_usecase.dart';
 import '../../domain/usecases/get_my_attendance_usecase.dart';
 import '../../domain/usecases/get_team_attendance_usecase.dart';
+import '../../domain/usecases/get_working_hours_settings_usecase.dart';
 import '../../domain/usecases/update_attendance_record_usecase.dart';
+import '../../domain/usecases/update_working_hours_settings_usecase.dart';
+import '../../domain/usecases/watch_my_attendance_usecase.dart';
 
 part 'attendance_event.dart';
 part 'attendance_state.dart';
 
-/// Single bloc serving both the employee clock-in/out screen and the
-/// admin/super-admin team-attendance screen. The UI decides which events
-/// to dispatch based on Permissions — this bloc doesn't re-check roles
-/// itself (the backend is the real enforcement point; see repository).
 class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
   final ClockInUseCase clockInUseCase;
   final ClockOutUseCase clockOutUseCase;
   final GetMyAttendanceUseCase getMyAttendanceUseCase;
   final GetTeamAttendanceUseCase getTeamAttendanceUseCase;
   final UpdateAttendanceRecordUseCase updateAttendanceRecordUseCase;
+  final WatchMyAttendanceUseCase watchMyAttendanceUseCase;
+  final GetWorkingHoursSettingsUseCase getWorkingHoursSettingsUseCase;
+  final UpdateWorkingHoursSettingsUseCase updateWorkingHoursSettingsUseCase;
 
   AttendanceBloc({
     required this.clockInUseCase,
@@ -27,12 +35,20 @@ class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
     required this.getMyAttendanceUseCase,
     required this.getTeamAttendanceUseCase,
     required this.updateAttendanceRecordUseCase,
+    required this.watchMyAttendanceUseCase,
+    required this.getWorkingHoursSettingsUseCase,
+    required this.updateWorkingHoursSettingsUseCase,
   }) : super(const AttendanceState()) {
     on<MyAttendanceRequested>(_onMyAttendanceRequested);
     on<ClockInRequested>(_onClockInRequested);
     on<ClockOutRequested>(_onClockOutRequested);
     on<TeamAttendanceRequested>(_onTeamAttendanceRequested);
     on<AttendanceRecordUpdateRequested>(_onRecordUpdateRequested);
+    // restartable: switching months cancels the previous live subscription
+    // instead of stacking multiple listeners.
+    on<MyAttendanceMonthChanged>(_onMonthChanged, transformer: restartable());
+    on<WorkingHoursSettingsRequested>(_onWorkingHoursSettingsRequested);
+    on<WorkingHoursSettingsUpdateRequested>(_onWorkingHoursSettingsUpdateRequested);
   }
 
   Future<void> _onMyAttendanceRequested(
@@ -78,10 +94,7 @@ class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
         status: AttendanceStatusFlag.failure,
         errorMessage: failure.message,
       )),
-      (record) => emit(state.copyWith(
-        status: AttendanceStatusFlag.loaded,
-        todayRecord: record,
-      )),
+      (record) => emit(state.copyWith(status: AttendanceStatusFlag.loaded, todayRecord: record)),
     );
   }
 
@@ -96,10 +109,7 @@ class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
         status: AttendanceStatusFlag.failure,
         errorMessage: failure.message,
       )),
-      (record) => emit(state.copyWith(
-        status: AttendanceStatusFlag.loaded,
-        todayRecord: record,
-      )),
+      (record) => emit(state.copyWith(status: AttendanceStatusFlag.loaded, todayRecord: record)),
     );
   }
 
@@ -108,18 +118,13 @@ class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
     Emitter<AttendanceState> emit,
   ) async {
     emit(state.copyWith(status: AttendanceStatusFlag.loading));
-    final result = await getTeamAttendanceUseCase(
-      DateRangeParams(from: event.from, to: event.to),
-    );
+    final result = await getTeamAttendanceUseCase(DateRangeParams(from: event.from, to: event.to));
     result.fold(
       (failure) => emit(state.copyWith(
         status: AttendanceStatusFlag.failure,
         errorMessage: failure.message,
       )),
-      (records) => emit(state.copyWith(
-        status: AttendanceStatusFlag.loaded,
-        teamAttendance: records,
-      )),
+      (records) => emit(state.copyWith(status: AttendanceStatusFlag.loaded, teamAttendance: records)),
     );
   }
 
@@ -135,14 +140,74 @@ class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
         errorMessage: failure.message,
       )),
       (updated) {
-        final newList = state.teamAttendance
-            .map((r) => r.id == updated.id ? updated : r)
-            .toList();
+        final newList = state.teamAttendance.map((r) => r.id == updated.id ? updated : r).toList();
+        emit(state.copyWith(status: AttendanceStatusFlag.loaded, teamAttendance: newList));
+      },
+    );
+  }
+
+  Future<void> _onMonthChanged(
+    MyAttendanceMonthChanged event,
+    Emitter<AttendanceState> emit,
+  ) async {
+    final from = DateTime(event.month.year, event.month.month, 1);
+    final to =
+        DateTime(event.month.year, event.month.month + 1, 1).subtract(const Duration(seconds: 1));
+
+    emit(state.copyWith(status: AttendanceStatusFlag.loading, selectedMonth: from));
+
+    await emit.onEach<Either<Failure, List<AttendanceEntity>>>(
+      watchMyAttendanceUseCase(DateRangeParams(from: from, to: to)),
+      onData: (result) {
+        result.fold(
+          (failure) => emit(state.copyWith(
+            status: AttendanceStatusFlag.failure,
+            errorMessage: failure.message,
+          )),
+          (records) => emit(state.copyWith(
+            status: AttendanceStatusFlag.loaded,
+            myAttendance: records,
+          )),
+        );
+      },
+      onError: (error, stackTrace) {
         emit(state.copyWith(
-          status: AttendanceStatusFlag.loaded,
-          teamAttendance: newList,
+          status: AttendanceStatusFlag.failure,
+          errorMessage: error.toString(),
         ));
       },
+    );
+  }
+
+  Future<void> _onWorkingHoursSettingsRequested(
+    WorkingHoursSettingsRequested event,
+    Emitter<AttendanceState> emit,
+  ) async {
+    final result = await getWorkingHoursSettingsUseCase(NoParams());
+    result.fold(
+      (failure) => emit(state.copyWith(
+        status: AttendanceStatusFlag.failure,
+        errorMessage: failure.message,
+      )),
+      (settings) => emit(state.copyWith(workingHoursSettings: settings)),
+    );
+  }
+
+  Future<void> _onWorkingHoursSettingsUpdateRequested(
+    WorkingHoursSettingsUpdateRequested event,
+    Emitter<AttendanceState> emit,
+  ) async {
+    emit(state.copyWith(status: AttendanceStatusFlag.actionInProgress));
+    final result = await updateWorkingHoursSettingsUseCase(event.settings);
+    result.fold(
+      (failure) => emit(state.copyWith(
+        status: AttendanceStatusFlag.failure,
+        errorMessage: failure.message,
+      )),
+      (settings) => emit(state.copyWith(
+        status: AttendanceStatusFlag.actionSuccess,
+        workingHoursSettings: settings,
+      )),
     );
   }
 }

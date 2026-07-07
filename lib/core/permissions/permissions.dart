@@ -29,4 +29,8 @@ class Permissions {
   // ---- Dashboard ----
   bool get seesTeamDashboard => role == UserRole.admin || role == UserRole.superAdmin;
   bool get seesCompanyDashboard => role == UserRole.superAdmin;
+
+  bool get canManageWorkingHoursSettings => role == UserRole.superAdmin;
+
+  bool get canAccessSettingsMenu => canManageTimeOffPolicies || canManageWorkingHoursSettings;
 }

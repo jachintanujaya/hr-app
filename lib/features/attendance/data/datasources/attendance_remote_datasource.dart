@@ -2,19 +2,20 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/attendance_model.dart';
+import '../models/working_hours_settings_model.dart';
 
 /// Firestore schema
 /// ─────────────────────────────────────────────────────────────────────────
 /// attendance/{docId}
-///   id             : String  (= docId)
-///   employee_id    : String  (= Firebase Auth uid)
-///   employee_name  : String
-///   date           : Timestamp
-///   clock_in_time  : Timestamp | null
-///   clock_out_time : Timestamp | null
-///   status         : String  ('present' | 'late' | 'absent' | 'onLeave' | 'halfDay')
-///   note           : String | null
-///   manager_id     : String  (used for team-scoped queries)
+///   id, employee_id, employee_name, date, clock_in_time, clock_out_time,
+///   status, note, manager_id
+///
+/// settings/working_hours   (single doc, Super Admin managed)
+///   standard_hours_per_day : number
+///   work_start_time        : string "HH:mm"
+///   work_end_time          : string "HH:mm"
+///   updated_at              : Timestamp
+///   updated_by              : String (uid)
 /// ─────────────────────────────────────────────────────────────────────────
 abstract class AttendanceRemoteDataSource {
   Future<AttendanceModel> clockIn({String? note});
@@ -22,6 +23,11 @@ abstract class AttendanceRemoteDataSource {
   Future<List<AttendanceModel>> getMyAttendance({required DateTime from, required DateTime to});
   Future<List<AttendanceModel>> getTeamAttendance({required DateTime from, required DateTime to});
   Future<AttendanceModel> updateAttendanceRecord(AttendanceModel record);
+
+  Stream<List<AttendanceModel>> watchMyAttendance({required DateTime from, required DateTime to});
+
+  Future<WorkingHoursSettingsModel> getWorkingHoursSettings();
+  Future<WorkingHoursSettingsModel> updateWorkingHoursSettings(WorkingHoursSettingsModel settings);
 }
 
 class AttendanceRemoteDataSourceImpl implements AttendanceRemoteDataSource {
@@ -34,24 +40,21 @@ class AttendanceRemoteDataSourceImpl implements AttendanceRemoteDataSource {
   })  : _firestore = firestore ?? FirebaseFirestore.instance,
         _auth = auth ?? FirebaseAuth.instance;
 
-  // ── helpers ──────────────────────────────────────────────────────────────
-
   User get _currentUser {
     final user = _auth.currentUser;
     if (user == null) throw AuthException('Not authenticated');
     return user;
   }
 
-  CollectionReference<Map<String, dynamic>> get _col =>
-      _firestore.collection('attendance');
+  CollectionReference<Map<String, dynamic>> get _col => _firestore.collection('attendance');
+  CollectionReference<Map<String, dynamic>> get _settings => _firestore.collection('settings');
+  static const _workingHoursDocId = 'working_hours';
 
-  /// Converts a Firestore document snapshot to AttendanceModel.
   AttendanceModel _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data()!;
     return AttendanceModel.fromJson(_timestampsToIso(data, doc.id));
   }
 
-  /// Firestore returns Timestamps; convert to ISO strings so fromJson works.
   Map<String, dynamic> _timestampsToIso(Map<String, dynamic> data, String id) {
     return {
       'id': id,
@@ -70,7 +73,6 @@ class AttendanceRemoteDataSourceImpl implements AttendanceRemoteDataSource {
     return ts.toString();
   }
 
-  /// Returns today's attendance doc for the current user, or null.
   Future<QueryDocumentSnapshot<Map<String, dynamic>>?> _findTodayDoc(String uid) async {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -86,15 +88,12 @@ class AttendanceRemoteDataSourceImpl implements AttendanceRemoteDataSource {
     return snap.docs.isEmpty ? null : snap.docs.first;
   }
 
-  // ── interface ─────────────────────────────────────────────────────────────
-
   @override
   Future<AttendanceModel> clockIn({String? note}) async {
     final user = _currentUser;
     final existing = await _findTodayDoc(user.uid);
 
     if (existing != null) {
-      // Already has a record today — just update clock_in_time if not set.
       final data = existing.data();
       if (data['clock_in_time'] != null) {
         throw ServerException('Already clocked in today');
@@ -104,7 +103,6 @@ class AttendanceRemoteDataSourceImpl implements AttendanceRemoteDataSource {
       return _fromDoc(updated);
     }
 
-    // Fetch display name from users collection.
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
     final employeeName = userDoc.data()?['full_name'] as String? ?? user.displayName ?? '';
     final managerId = userDoc.data()?['manager_id'] as String?;
@@ -138,9 +136,7 @@ class AttendanceRemoteDataSourceImpl implements AttendanceRemoteDataSource {
       throw ServerException('Already clocked out today');
     }
 
-    final updates = <String, dynamic>{
-      'clock_out_time': FieldValue.serverTimestamp(),
-    };
+    final updates = <String, dynamic>{'clock_out_time': FieldValue.serverTimestamp()};
     if (note != null) updates['note'] = note;
     await existing.reference.update(updates);
 
@@ -165,12 +161,26 @@ class AttendanceRemoteDataSourceImpl implements AttendanceRemoteDataSource {
   }
 
   @override
+  Stream<List<AttendanceModel>> watchMyAttendance({
+    required DateTime from,
+    required DateTime to,
+  }) {
+    final user = _currentUser;
+    return _col
+        .where('employee_id', isEqualTo: user.uid)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(from))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(to))
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => _fromDoc(d)).toList());
+  }
+
+  @override
   Future<List<AttendanceModel>> getTeamAttendance({
     required DateTime from,
     required DateTime to,
   }) async {
     final user = _currentUser;
-    // Admin sees records where manager_id == their uid.
     final snap = await _col
         .where('manager_id', isEqualTo: user.uid)
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(from))
@@ -185,16 +195,41 @@ class AttendanceRemoteDataSourceImpl implements AttendanceRemoteDataSource {
   Future<AttendanceModel> updateAttendanceRecord(AttendanceModel record) async {
     final docRef = _col.doc(record.id);
     await docRef.update({
-      'clock_in_time': record.clockInTime != null
-          ? Timestamp.fromDate(record.clockInTime!)
-          : null,
-      'clock_out_time': record.clockOutTime != null
-          ? Timestamp.fromDate(record.clockOutTime!)
-          : null,
+      'clock_in_time': record.clockInTime != null ? Timestamp.fromDate(record.clockInTime!) : null,
+      'clock_out_time':
+          record.clockOutTime != null ? Timestamp.fromDate(record.clockOutTime!) : null,
       'status': record.status.name,
       'note': record.note,
     });
     final snap = await docRef.get();
     return _fromDoc(snap);
+  }
+
+  @override
+  Future<WorkingHoursSettingsModel> getWorkingHoursSettings() async {
+    final doc = await _settings.doc(_workingHoursDocId).get();
+    if (!doc.exists || doc.data() == null) {
+      // No settings saved yet — fall back to defaults so the app works
+      // before a Super Admin has configured anything.
+      return const WorkingHoursSettingsModel(
+        standardHoursPerDay: 8,
+        workStartTime: '09:00',
+        workEndTime: '17:00',
+      );
+    }
+    return WorkingHoursSettingsModel.fromJson(doc.data()!);
+  }
+
+  @override
+  Future<WorkingHoursSettingsModel> updateWorkingHoursSettings(
+      WorkingHoursSettingsModel settings) async {
+    final user = _currentUser;
+    await _settings.doc(_workingHoursDocId).set({
+      ...settings.toJson(),
+      'updated_at': FieldValue.serverTimestamp(),
+      'updated_by': user.uid,
+    }, SetOptions(merge: true));
+    final snap = await _settings.doc(_workingHoursDocId).get();
+    return WorkingHoursSettingsModel.fromJson(snap.data()!);
   }
 }

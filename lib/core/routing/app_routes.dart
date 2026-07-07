@@ -12,4 +12,9 @@ class AppRoutes {
   static const profile = '/profile';
   static const teamMembers = '/employees/team';
   static const allEmployees = '/employees/all';
+
+  static const workingHoursSettings = '/attendance/working-hours-settings';
+  static const settings = '/settings';
+  static const workingHoursPolicies = '/settings/working-hours-policies';
+  static const workingHoursPolicyAssign = '/settings/working-hours-policies/:policyId/assign';
 }

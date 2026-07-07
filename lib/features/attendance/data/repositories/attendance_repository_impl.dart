@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/network/network_info.dart';
 import '../../domain/entities/attendance_entity.dart';
+import '../../domain/entities/working_hours_settings_entity.dart';
 import '../../domain/repositories/attendance_repository.dart';
 import '../datasources/attendance_remote_datasource.dart';
 import '../models/attendance_model.dart';
+import '../models/working_hours_settings_model.dart';
 
 class AttendanceRepositoryImpl implements AttendanceRepository {
   final AttendanceRemoteDataSource remoteDataSource;
@@ -51,4 +54,35 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
   @override
   Future<Either<Failure, AttendanceEntity>> updateAttendanceRecord(AttendanceEntity record) =>
       _guard(() => remoteDataSource.updateAttendanceRecord(AttendanceModel.fromEntity(record)));
+
+  @override
+  Stream<Either<Failure, List<AttendanceEntity>>> watchMyAttendance({
+    required DateTime from,
+    required DateTime to,
+  }) {
+    return remoteDataSource.watchMyAttendance(from: from, to: to).transform(
+      StreamTransformer<List<AttendanceModel>, Either<Failure, List<AttendanceEntity>>>.fromHandlers(
+        handleData: (data, sink) => sink.add(Right(data)),
+        handleError: (error, stackTrace, sink) {
+          if (error is AuthException) {
+            sink.add(Left(PermissionFailure(error.message)));
+          } else if (error is ServerException) {
+            sink.add(Left(ServerFailure(error.message)));
+          } else {
+            sink.add(Left(UnknownFailure(error.toString())));
+          }
+        },
+      ),
+    );
+  }
+
+  @override
+  Future<Either<Failure, WorkingHoursSettingsEntity>> getWorkingHoursSettings() =>
+      _guard(() => remoteDataSource.getWorkingHoursSettings());
+
+  @override
+  Future<Either<Failure, WorkingHoursSettingsEntity>> updateWorkingHoursSettings(
+          WorkingHoursSettingsEntity settings) =>
+      _guard(() =>
+          remoteDataSource.updateWorkingHoursSettings(WorkingHoursSettingsModel.fromEntity(settings)));
 }

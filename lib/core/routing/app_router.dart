@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/attendance/presentation/bloc/attendance_bloc.dart';
 import '../../features/attendance/presentation/pages/clock_in_out_page.dart';
 import '../../features/attendance/presentation/pages/team_attendance_page.dart';
+import '../../features/attendance/presentation/pages/working_hours_settings_page.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/dashboard/presentation/pages/dashboard_page.dart';
@@ -16,6 +17,12 @@ import '../../features/time_off/presentation/bloc/time_off_bloc.dart';
 import '../../features/time_off/presentation/pages/my_time_off_page.dart';
 import '../../features/time_off/presentation/pages/time_off_approvals_page.dart';
 import '../../features/time_off/presentation/pages/time_off_policies_page.dart';
+import '../../features/settings/presentation/pages/settings_page.dart';
+import '../../features/working_hours/domain/entities/working_hours_policy_entity.dart';
+import '../../features/working_hours/presentation/bloc/working_hours_bloc.dart';
+import '../../features/working_hours/presentation/pages/assign_policy_page.dart';
+import '../../features/working_hours/presentation/pages/working_hours_policies_page.dart';
+import '../../features/employee_management/presentation/bloc/employee_bloc.dart';
 import '../di/injection_container.dart';
 import 'app_routes.dart';
 
@@ -59,6 +66,18 @@ GoRouter buildRouter(AuthBloc authBloc) {
           !(authState.permissions?.canCreateOrDeleteEmployees ?? false)) {
         return AppRoutes.dashboard;
       }
+      if (state.matchedLocation == AppRoutes.workingHoursSettings &&
+          !(authState.permissions?.canManageWorkingHoursSettings ?? false)) {
+        return AppRoutes.dashboard;
+      }
+      if (state.matchedLocation == AppRoutes.settings &&
+          !(authState.permissions?.canAccessSettingsMenu ?? false)) {
+        return AppRoutes.dashboard;
+      }
+      if (state.matchedLocation.startsWith(AppRoutes.workingHoursPolicies) &&
+          !(authState.permissions?.canManageWorkingHoursSettings ?? false)) {
+        return AppRoutes.dashboard;
+      }
 
       return null; // no redirect
     },
@@ -69,7 +88,10 @@ GoRouter buildRouter(AuthBloc authBloc) {
       ),
       GoRoute(
         path: AppRoutes.dashboard,
-        builder: (context, state) => const DashboardPage(),
+        builder: (context, state) => BlocProvider(
+          create: (_) => sl<AttendanceBloc>(),
+          child: const DashboardPage(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.attendance,
@@ -136,6 +158,37 @@ GoRouter buildRouter(AuthBloc authBloc) {
             ),
           ),
         ],
+      ),
+      GoRoute(
+        path: AppRoutes.workingHoursSettings,
+        builder: (context, state) => BlocProvider(
+          create: (_) => sl<AttendanceBloc>(),
+          child: const WorkingHoursSettingsPage(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.settings,
+        builder: (context, state) => const SettingsPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.workingHoursPolicies,
+        builder: (context, state) => BlocProvider(
+          create: (_) => sl<WorkingHoursBloc>(),
+          child: const WorkingHoursPoliciesPage(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.workingHoursPolicyAssign,
+        builder: (context, state) {
+          final policy = state.extra as WorkingHoursPolicyEntity;
+          return MultiBlocProvider(
+            providers: [
+              BlocProvider(create: (_) => sl<WorkingHoursBloc>()),
+              BlocProvider(create: (_) => sl<EmployeeBloc>()),
+            ],
+            child: AssignPolicyPage(policy: policy),
+          );
+        },
       ),
     ],
   );

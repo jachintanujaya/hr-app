@@ -1,12 +1,14 @@
 part of 'attendance_bloc.dart';
 
-enum AttendanceStatusFlag { initial, loading, loaded, actionInProgress, failure }
+enum AttendanceStatusFlag { initial, loading, loaded, actionInProgress, actionSuccess, failure }
 
 class AttendanceState extends Equatable {
   final AttendanceStatusFlag status;
   final List<AttendanceEntity> myAttendance;
   final List<AttendanceEntity> teamAttendance;
-  final AttendanceEntity? todayRecord; // today's clock-in/out for the current user
+  final AttendanceEntity? todayRecord;
+  final DateTime? selectedMonth;
+  final WorkingHoursSettingsEntity? workingHoursSettings;
   final String? errorMessage;
 
   const AttendanceState({
@@ -14,6 +16,8 @@ class AttendanceState extends Equatable {
     this.myAttendance = const [],
     this.teamAttendance = const [],
     this.todayRecord,
+    this.selectedMonth,
+    this.workingHoursSettings,
     this.errorMessage,
   });
 
@@ -24,6 +28,8 @@ class AttendanceState extends Equatable {
     List<AttendanceEntity>? myAttendance,
     List<AttendanceEntity>? teamAttendance,
     AttendanceEntity? todayRecord,
+    DateTime? selectedMonth,
+    WorkingHoursSettingsEntity? workingHoursSettings,
     String? errorMessage,
   }) {
     return AttendanceState(
@@ -31,11 +37,20 @@ class AttendanceState extends Equatable {
       myAttendance: myAttendance ?? this.myAttendance,
       teamAttendance: teamAttendance ?? this.teamAttendance,
       todayRecord: todayRecord ?? this.todayRecord,
+      selectedMonth: selectedMonth ?? this.selectedMonth,
+      workingHoursSettings: workingHoursSettings ?? this.workingHoursSettings,
       errorMessage: errorMessage,
     );
   }
 
   @override
-  List<Object?> get props =>
-      [status, myAttendance, teamAttendance, todayRecord, errorMessage];
+  List<Object?> get props => [
+        status,
+        myAttendance,
+        teamAttendance,
+        todayRecord,
+        selectedMonth,
+        workingHoursSettings,
+        errorMessage,
+      ];
 }

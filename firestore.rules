@@ -95,5 +95,26 @@ service cloud.firestore {
       allow read: if isSignedIn();  // all roles can read policies
       allow write: if isSuperAdmin();
     }
+
+    // ── settings collection (e.g. working_hours default) ───────────────────
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    // ── working_hours_policies collection ───────────────────────────────────
+    match /working_hours_policies/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    // ── working_hours_assignments collection ────────────────────────────────
+    match /working_hours_assignments/{docId} {
+      // Employees can read their own assignments (to see their effective
+      // hours); Super Admin can read/manage all.
+      allow read: if isSignedIn()
+        && (isOwner(resource.data.employee_id) || isSuperAdmin());
+      allow write: if isSuperAdmin();
+    }
   }
 }

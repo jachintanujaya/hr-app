@@ -50,6 +50,18 @@ import '../../features/employee_management/domain/usecases/reassign_role_or_mana
 import '../../features/employee_management/domain/usecases/update_employee_usecase.dart';
 import '../../features/employee_management/presentation/bloc/employee_bloc.dart';
 
+import '../../features/attendance/domain/usecases/get_working_hours_settings_usecase.dart';
+import '../../features/attendance/domain/usecases/update_working_hours_settings_usecase.dart';
+import '../../features/attendance/domain/usecases/watch_my_attendance_usecase.dart';
+import '../../features/working_hours/data/datasources/working_hours_remote_datasource.dart';
+import '../../features/working_hours/data/repositories/working_hours_repository_impl.dart';
+import '../../features/working_hours/domain/repositories/working_hours_repository.dart';
+import '../../features/working_hours/domain/usecases/assign_policy_usecase.dart';
+import '../../features/working_hours/domain/usecases/create_policy_usecase.dart';
+import '../../features/working_hours/domain/usecases/watch_assignments_for_policy_usecase.dart';
+import '../../features/working_hours/domain/usecases/watch_policies_usecase.dart';
+import '../../features/working_hours/presentation/bloc/working_hours_bloc.dart';
+
 // Connectivity is still used for the network guard in repositories.
 import 'package:connectivity_plus/connectivity_plus.dart';
 
@@ -109,6 +121,10 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => GetTeamAttendanceUseCase(sl()));
   sl.registerLazySingleton(() => UpdateAttendanceRecordUseCase(sl()));
 
+  sl.registerLazySingleton(() => WatchMyAttendanceUseCase(sl()));
+  sl.registerLazySingleton(() => GetWorkingHoursSettingsUseCase(sl()));
+  sl.registerLazySingleton(() => UpdateWorkingHoursSettingsUseCase(sl()));
+
   sl.registerFactory(
     () => AttendanceBloc(
       clockInUseCase: sl(),
@@ -116,6 +132,9 @@ Future<void> initDependencies() async {
       getMyAttendanceUseCase: sl(),
       getTeamAttendanceUseCase: sl(),
       updateAttendanceRecordUseCase: sl(),
+      watchMyAttendanceUseCase: sl(),
+      getWorkingHoursSettingsUseCase: sl(),
+      updateWorkingHoursSettingsUseCase: sl(),
     ),
   );
 
@@ -178,6 +197,29 @@ Future<void> initDependencies() async {
       updateEmployeeUseCase: sl(),
       deleteEmployeeUseCase: sl(),
       reassignRoleOrManagerUseCase: sl(),
+    ),
+  );
+
+  // ── Feature: Working Hours (policies + assignments) ─────────────────────
+
+  sl.registerLazySingleton<WorkingHoursRemoteDataSource>(
+    () => WorkingHoursRemoteDataSourceImpl(firestore: sl(), auth: sl()),
+  );
+  sl.registerLazySingleton<WorkingHoursRepository>(
+    () => WorkingHoursRepositoryImpl(remoteDataSource: sl()),
+  );
+
+  sl.registerLazySingleton(() => WatchPoliciesUseCase(sl()));
+  sl.registerLazySingleton(() => CreatePolicyUseCase(sl()));
+  sl.registerLazySingleton(() => WatchAssignmentsForPolicyUseCase(sl()));
+  sl.registerLazySingleton(() => AssignPolicyUseCase(sl()));
+
+  sl.registerFactory(
+    () => WorkingHoursBloc(
+      watchPoliciesUseCase: sl(),
+      createPolicyUseCase: sl(),
+      watchAssignmentsForPolicyUseCase: sl(),
+      assignPolicyUseCase: sl(),
     ),
   );
 }
